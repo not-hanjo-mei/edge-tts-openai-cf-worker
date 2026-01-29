@@ -34,13 +34,54 @@ Edge TTS Worker 是一个部署在 Cloudflare Worker 上的代理服务，它将
 2. 复制 [worker.js](worker.js) 中的代码并粘贴
 3. 点击 `Save and deploy`
 
-### 3. 设置 API Key（可选）
+### 3. 设置预设语音（可选）
+
+你可以配置预设语音参数,通过 `voice` 参数的预设名称来快速应用。
+
+1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/)
+2. 进入 `Workers & Pages`
+3. 选择你的 Worker
+4. 点击 `设置` → `变量和机密`
+5. 点击 `添加变量`
+6. 填写：
+   - **类型**: 选择 `JSON`
+   - **变量名**: `VOICE_PRESETS`
+   - **值**: 填入以下 JSON 内容
+
+**值**: 填入以下 JSON 内容
+
+```json
+{
+  "soft_female": {
+    "voice": "zh-CN-XiaoxiaoNeural",
+    "style": "gentle",
+    "speed": 0.9,
+    "pitch": 0.95
+  },
+  "cheerful_announcer": {
+    "voice": "zh-CN-YunyangNeural",
+    "style": "cheerful",
+    "speed": 1.1,
+    "pitch": 1.0
+  }
+}
+```
+
+7. 点击 `保存并部署`
+
+配置说明：
+- `voice`: 预设使用的语音名称（支持微软标准语音名称或 OpenAI 兼容名称）
+- `style`: 语音风格（见下文"情绪风格参数"完整列表）
+- `speed`: 语速（0.5-2.0，1.0为正常）
+- `pitch`: 音调（0.5-2.0，1.0为正常）
+
+### 4. 设置 API Key（可选）
 1. 在 Worker 的设置页面中找到 `Settings` -> `Variables`
 2. 点击 `Add variable`
 3. 名称填写 `API_KEY`，值填写你想要的密钥
 4. 点击 `Save and deploy`
 
-### 4. 配置自定义域名（可选）
+### 5. 配置自定义域名（可选）
 
 #### 前提条件
 - 你的域名已经托管在 Cloudflare
@@ -104,6 +145,20 @@ curl -X POST https://你的worker地址/v1/audio/speech \
   }' --output output.mp3
 ```
 
+**使用预设语音：**
+```bash
+# 使用配置好的预设（假设已配置了 "soft_female" 预设）
+curl -X POST https://你的worker地址/v1/audio/speech \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-api-key" \
+  -d '{
+    "input": "你好，世界！",
+    "voice": "soft_female"
+  }' --output output.mp3
+```
+
+预定语音会应用预先配置的 voice、style、speed 和 pitch 参数。
+
 ### 高级功能
 
 **语音情绪控制**
@@ -132,6 +187,11 @@ curl -X POST https://你的worker地址/v1/audio/speech \
 | pitch | number | 否 | 音调调节 (0.5-2.0) | 1.0 | 1.1 |
 | instructions | string | 否 | 语音情绪风格(空=默认中性) | - | cheerful |
 
+**预设语音说明：**
+- 在 wrangler.toml 或控制台中配置预设后,可通过预设名称直接使用
+- 预设包含 voice、style、speed、pitch 的完整配置
+- **重要**: 使用预设时,预设中的参数值会覆盖请求中传入的参数
+
 ### 语音角色说明
 
 #### OpenAI 兼容语音映射
@@ -149,7 +209,7 @@ curl -X POST https://你的worker地址/v1/audio/speech \
 
 #### 自定义语音预设
 
-你可以通过在 wrangler.toml 的 `[vars]` 部分配置 `VOICE_PRESETS` 来定义语音预设。
+除了在控制台中配置，你还可以通过在 wrangler.toml 的 `[vars]` 部分配置 `VOICE_PRESETS` 来定义语音预设。
 
 示例配置：
 ```toml
@@ -171,8 +231,6 @@ VOICE_PRESETS = """
 }
 """
 ```
-
-**注意**：Cloudflare Workers 会自动将 TOML 多行字符串解析为对象。配置格式必须为有效的 JSON。
 
 使用预设：
 ```bash
@@ -313,8 +371,16 @@ curl -X POST https://你的worker地址/v1/audio/speech \
 3. **Q: 有请求限制吗？**  
    A: Cloudflare Workers 免费版每天有 100,000 次请求限制
 
-4. **Q: 如何调整语音效果？**  
-   A: 可以通过调整 speed 参数（范围 0.5-2.0）来改变语速
+4. **Q: 如何调整语音效果？**
+   A: 有两种方式调整语音效果：
+   - 方式一：直接传入 `speed`、`pitch`、`instructions` 参数
+   - 方式二：配置预设语音，通过预设名称快速调用
+
+   参数调整范围：
+   - `speed`: 0.5-2.0（语速，1.0为正常）
+   - `pitch`: 0.5-2.0（音调，1.0为正常）
+   - `instructions`: 情绪风格（见文档中的"情绪风格参数"完整列表）
+
 
 5. **Q: 如何使用自定义域名？**  
    A: 有两种方式：
@@ -330,12 +396,15 @@ curl -X POST https://你的worker地址/v1/audio/speech \
    - 更专业的品牌形象
    - 更容易记忆的地址
    - 可以随时更换底层服务而保持 API 地址不变
-   - 便于管理多个 Workers
+    - 便于管理多个 Workers
 
-7. **Q: 自定义域名需要付费吗？**  
+7. **Q: 自定义域名需要付费吗？**
    A: 这取决于你的 Cloudflare 计划：
    - 免费计划：可以使用自定义域名，但有一些限制
    - 付费计划：有更多功能和更高的限制
+
+8. **Q: 预设中的参数会被覆盖吗？**
+   A: **不会**。使用预设语音时，预设中定义的所有参数（voice、style、speed、pitch）都会完全覆盖请求中传入的同名参数。如果你想修改预设中的某个参数，需要重新配置预设或在请求中单独指定语音名称而不是预设名称。
 
 ## 📄 许可证
 

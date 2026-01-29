@@ -4,6 +4,22 @@ compatibility_date = "2024-01-01"
 
 [vars]
 API_KEY = "abc"
+VOICE_PRESETS = """
+{
+  "soft_female": {
+    "voice": "zh-CN-XiaoxiaoNeural",
+    "style": "gentle",
+    "speed": 0.9,
+    "pitch": 0.95
+  },
+  "cheerful_announcer": {
+    "voice": "zh-CN-YunyangNeural",
+    "style": "cheerful",
+    "speed": 1.1,
+    "pitch": 1.0
+  }
+}
+"""
 
 [dev]
 ip = "0.0.0.0"

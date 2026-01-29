@@ -16,12 +16,22 @@ let tokenInfo = {
 // 在文件顶部常量定义区域添加映射表
 const VOICE_MAPPING = {
     'alloy': 'zh-CN-XiaoxiaoNeural',
-    'echo': 'zh-CN-YunxiNeural', 
+    'echo': 'zh-CN-YunxiNeural',
     'fable': 'zh-CN-XiaoyiNeural',
     'onyx': 'zh-CN-YunyangNeural',
     'nova': 'zh-CN-XiaohanNeural',
     'shimmer': 'zh-CN-XiaomengNeural'
 };
+
+const VALID_INSTRUCTIONS = [
+    "advertisement_upbeat", "affectionate", "angry", "assistant", "calm", "chat",
+    "cheerful", "customerservice", "depressed", "disgruntled", "documentary-narration",
+    "embarrassed", "empathetic", "envious", "excited", "fearful", "friendly",
+    "gentle", "hopeful", "lyrical", "narration-professional", "narration-relaxed",
+    "newscast", "newscast-casual", "newscast-formal", "poetry-reading", "sad",
+    "serious", "shouting", "sports_commentary", "sports_commentary_excited",
+    "whispering", "terrified", "unfriendly"
+];
 
 addEventListener("fetch", event => {
     event.respondWith(handleRequest(event.request));
@@ -31,14 +41,14 @@ async function handleRequest(request) {
     if (request.method === "OPTIONS") {
         return handleOptions(request);
     }
-    
+
     // 只在设置了 API_KEY 的情况下才验证
     if (API_KEY) {
         const authHeader = request.headers.get("authorization");
-        const apiKey = authHeader?.startsWith("Bearer ") 
-            ? authHeader.slice(7) 
+        const apiKey = authHeader?.startsWith("Bearer ")
+            ? authHeader.slice(7)
             : null;
-                      
+
         if (apiKey !== API_KEY) {
             return new Response(JSON.stringify({
                 error: {
@@ -59,31 +69,70 @@ async function handleRequest(request) {
 
     const requestUrl = new URL(request.url);
     const path = requestUrl.pathname;
-    
+
     if (path === "/v1/audio/speech") {
         try {
             const requestBody = await request.json();
-            let { 
-                model = "tts-1",
+            let {
+                model,
                 input,
                 voice = "zh-CN-XiaoxiaoNeural",
                 response_format = "mp3",
                 speed = 1.0,
                 pitch = 1.0,
-                style = "general"
+                instructions
             } = requestBody;
+
+            let presets = {};
+            const presetsRaw = globalThis.VOICE_PRESETS;
+            if (presetsRaw) {
+                if (typeof presetsRaw === "object") {
+                    presets = presetsRaw;
+                } else if (typeof presetsRaw === "string") {
+                    try {
+                        presets = JSON.parse(presetsRaw);
+                    } catch (e) {
+                        console.error("Failed to parse VOICE_PRESETS:", e);
+                    }
+                }
+            }
+
+            if (presets[voice] && typeof presets[voice] === "object") {
+                const p = presets[voice];
+                voice = p.voice || voice;
+                if (p.style !== undefined) instructions = p.style;
+                if (p.speed !== undefined) speed = p.speed;
+                if (p.pitch !== undefined) pitch = p.pitch;
+            }
+
+            if (instructions && !VALID_INSTRUCTIONS.includes(instructions)) {
+                return new Response(JSON.stringify({
+                    error: {
+                        message: `Invalid instructions: "${instructions}". Valid options: ${VALID_INSTRUCTIONS.join(", ")}`,
+                        type: "invalid_request_error",
+                        param: "instructions",
+                        code: "invalid_value"
+                    }
+                }), {
+                    status: 400,
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...makeCORSHeaders()
+                    }
+                });
+            }
 
             // 添加语音名称映射
             voice = VOICE_MAPPING[voice] || voice;  // 如果存在映射则替换，否则保持原值
 
             const rate = ((speed - 1) * 100).toFixed(0);
-            const numPitch = ((pitch - 1) * 100).toFixed(0); // 将 pitch 参数转换为百分比形式
+            const numPitch = ((pitch - 1) * 100).toFixed(0);
             const response = await getVoice(
-                input, 
-                voice, 
+                input,
+                voice,
                 rate,
                 numPitch,
-                style,
+                instructions,
                 "audio-24khz-48kbitrate-mono-mp3",
                 false
             );
@@ -124,7 +173,7 @@ async function handleOptions(request) {
     });
 }
 
-async function getVoice(text, voiceName = "zh-CN-XiaoxiaoNeural", rate = 0, pitch = 0, style = "general", outputFormat = "audio-24khz-48kbitrate-mono-mp3", download = false) {
+async function getVoice(text, voiceName = "zh-CN-XiaoxiaoNeural", rate = 0, pitch = 0, instructions = "", outputFormat = "audio-24khz-48kbitrate-mono-mp3", download = false) {
     try {
         const maxChunkSize = 2000; // 假设每次请求的最大文本长度为2000字符
         const chunks = [];
@@ -136,7 +185,7 @@ async function getVoice(text, voiceName = "zh-CN-XiaoxiaoNeural", rate = 0, pitc
         }
 
         // 获取每个分段的音频
-        const audioChunks = await Promise.all(chunks.map(chunk => getAudioChunk(chunk, voiceName, rate, pitch, style, outputFormat)));
+        const audioChunks = await Promise.all(chunks.map(chunk => getAudioChunk(chunk, voiceName, rate, pitch, instructions, outputFormat)));
 
         // 将音频片段拼接起来
         const concatenatedAudio = new Blob(audioChunks, { type: 'audio/mpeg' });
@@ -174,7 +223,7 @@ async function getVoice(text, voiceName = "zh-CN-XiaoxiaoNeural", rate = 0, pitc
 
 
 //获取单个音频数据
-async function getAudioChunk(text, voiceName, rate, pitch, style, outputFormat) {
+async function getAudioChunk(text, voiceName, rate, pitch, instructions, outputFormat) {
     const endpoint = await getEndpoint();
     const url = `https://${endpoint.r}.tts.speech.microsoft.com/cognitiveservices/v1`;
 
@@ -186,7 +235,7 @@ async function getAudioChunk(text, voiceName, rate, pitch, style, outputFormat) 
             "User-Agent": "okhttp/4.5.0",
             "X-Microsoft-OutputFormat": outputFormat
         },
-        body: getSsml(text, voiceName, rate, pitch, style)
+        body: getSsml(text, voiceName, rate, pitch, instructions)
     });
 
     if (!response.ok) {
@@ -197,13 +246,18 @@ async function getAudioChunk(text, voiceName, rate, pitch, style, outputFormat) 
     return response.blob();
 }
 
-function getSsml(text, voiceName, rate, pitch,style) {
-    return `<speak xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="http://www.w3.org/2001/mstts" version="1.0" xml:lang="zh-CN"> 
-                <voice name="${voiceName}"> 
-                    <mstts:express-as style="${style}"  styledegree="1.0" role="default" > 
-                        <prosody rate="${rate}%" pitch="${pitch}%" volume="50">${text}</prosody> 
-                    </mstts:express-as> 
-                </voice> 
+function getSsml(text, voiceName, rate, pitch, instructions) {
+    const expressAsTag = instructions
+        ? `<mstts:express-as style="${instructions}" styledegree="1.0" role="default" >`
+        : "";
+    const expressAsCloseTag = instructions ? `</mstts:express-as>` : "";
+
+    return `<speak xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="http://www.w3.org/2001/mstts" version="1.0" xml:lang="zh-CN">
+                <voice name="${voiceName}">
+                    ${expressAsTag}
+                        <prosody rate="${rate}%" pitch="${pitch}%" volume="50">${text}</prosody>
+                    ${expressAsCloseTag}
+                </voice>
             </speak>`;
 
 }
@@ -211,7 +265,7 @@ function getSsml(text, voiceName, rate, pitch,style) {
 // 优化 getEndpoint 函数
 async function getEndpoint() {
     const now = Date.now() / 1000;
-    
+
     // 检查token是否有效（提前5分钟刷新）
     if (tokenInfo.token && tokenInfo.expiredAt && now < tokenInfo.expiredAt - TOKEN_REFRESH_BEFORE_EXPIRY) {
         console.log(`使用缓存的token，剩余 ${((tokenInfo.expiredAt - now) / 60).toFixed(1)} 分钟`);
@@ -221,7 +275,7 @@ async function getEndpoint() {
     // 获取新token
     const endpointUrl = "https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0";
     const clientId = crypto.randomUUID().replace(/-/g, "");
-    
+
     try {
         const response = await fetch(endpointUrl, {
             method: "POST",
@@ -246,7 +300,7 @@ async function getEndpoint() {
         const data = await response.json();
         const jwt = data.t.split(".")[1];
         const decodedJwt = JSON.parse(atob(jwt));
-        
+
         // 更新缓存
         tokenInfo = {
             endpoint: data,
@@ -335,7 +389,7 @@ function dateFormat() {
 async function fetchWithTimeout(url, options, timeout = 30000) {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
-    
+
     try {
         const response = await fetch(url, {
             ...options,

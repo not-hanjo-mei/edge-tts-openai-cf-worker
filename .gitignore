@@ -45,3 +45,6 @@ desktop.ini
 *.backup
 *.old
 *.tmp 
+
+# AI
+AGENTS.md

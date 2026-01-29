@@ -99,7 +99,6 @@ curl -X POST https://你的worker地址/v1/audio/speech \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-api-key" \
   -d '{
-    "model": "tts-1",
     "input": "你好，世界！",
     "voice": "zh-CN-XiaoxiaoNeural"
   }' --output output.mp3
@@ -113,10 +112,9 @@ curl -X POST https://你的worker地址/v1/audio/speech \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-api-key" \
   -d '{
-    "model": "tts-1",
     "input": "这是一段开心的话！",
     "voice": "zh-CN-XiaoxiaoNeural",
-    "style": "cheerful",
+    "instructions": "cheerful",
     "speed": 1.2
   }' --output happy.mp3
 ```
@@ -126,13 +124,13 @@ curl -X POST https://你的worker地址/v1/audio/speech \
 
 | 参数 | 类型 | 必填 | 说明 | 默认值 | 示例值 |
 |------|------|------|------|--------|--------|
-| model | string | 是 | 模型名称（固定值） | - | tts-1 |
+| model | string | 否 | 任意值或省略 | - | "gpt-4o-mini-tts" |
 | input | string | 是 | 要转换的文本内容 | - | "你好，世界！" |
-| voice | string | 是 | 语音角色名称 | - | zh-CN-XiaoxiaoNeural |
+| voice | string | 是 | 语音角色名称或预设ID | zh-CN-XiaoxiaoNeural | zh-CN-XiaoxiaoNeural, soft_female |
 | response_format | string | 否 | 音频输出格式 | mp3 | mp3 |
 | speed | number | 否 | 语速调节 (0.5-2.0) | 1.0 | 1.2 |
 | pitch | number | 否 | 音调调节 (0.5-2.0) | 1.0 | 1.1 |
-| style | string | 否 | 语音情绪风格 | general | cheerful |
+| instructions | string | 否 | 语音情绪风格(空=默认中性) | - | cheerful |
 
 ### 语音角色说明
 
@@ -148,6 +146,45 @@ curl -X POST https://你的worker地址/v1/audio/speech \
 | onyx       | zh-CN-YunyangNeural | 云扬 - 专业权威的男声 |
 | nova       | zh-CN-XiaohanNeural | 晓涵 - 清新活泼的女声 |
 | shimmer    | zh-CN-XiaomengNeural | 晓梦 - 甜美动人的女声 |
+
+#### 自定义语音预设
+
+你可以通过在 wrangler.toml 的 `[vars]` 部分配置 `VOICE_PRESETS` 来定义语音预设。
+
+示例配置：
+```toml
+[vars]
+VOICE_PRESETS = """
+{
+  "soft_female": {
+    "voice": "zh-CN-XiaoxiaoNeural",
+    "style": "gentle",
+    "speed": 0.9,
+    "pitch": 0.95
+  },
+  "cheerful_announcer": {
+    "voice": "zh-CN-YunyangNeural",
+    "style": "cheerful",
+    "speed": 1.1,
+    "pitch": 1.0
+  }
+}
+"""
+```
+
+**注意**：Cloudflare Workers 会自动将 TOML 多行字符串解析为对象。配置格式必须为有效的 JSON。
+
+使用预设：
+```bash
+curl -X POST https://你的worker地址/v1/audio/speech \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": "这是一段测试文本",
+    "voice": "soft_female"
+  }' --output output.mp3
+```
+
+**注意：** 使用预设时，预设中的参数值会覆盖请求中传入的参数。
 
 ### 使用注意事项
 
@@ -208,15 +245,48 @@ curl -X POST https://你的worker地址/v1/audio/speech \
 | ko-KR-SunHiNeural | Sun-Hi | 韩文 |
 | ko-KR-InJoonNeural | InJoon | 韩文 |
 
-#### 情绪风格参数
-| 风格参数 | 效果描述 | 适用场景 |
-|---------|---------|---------|
-| angry | 愤怒语气 | 情感强烈的对话 |
-| chat | 轻松闲聊 | 日常对话交流 |
-| cheerful | 开心愉悦 | 欢快场景表达 |
-| sad | 悲伤情绪 | 抒情感伤场景 |
+#### 情绪风格参数 (instructions)
 
-更多语音风格和参数设置请参考[微软语音合成标记文档](https://learn.microsoft.com/zh-cn/azure/ai-services/speech-service/speech-synthesis-markup-voice)
+有效的 instructions 值：
+
+| 参数值 | 效果描述 | 适用场景 |
+|-------|---------|---------|
+| advertisement_upbeat | 兴奋精力的语气 | 推广产品或服务 |
+| affectionate | 温暖亲切的语气 | 表达温暖情感 |
+| angry | 愤怒语气 | 情感强烈的对话 |
+| assistant | 温暖轻松的语气 | 数字助手 |
+| calm | 沉着冷静的语气 | 平静表达 |
+| chat | 轻松闲聊的语气 | 日常对话交流 |
+| cheerful | 开心愉悦的语气 | 欢快场景表达 |
+| customerservice | 友好热情的语气 | 客户服务 |
+| depressed | 忧郁沮丧的语气 | 表达悲伤 |
+| disgruntled | 轻蔑抱怨的语气 | 不满情绪 |
+| documentary-narration | 轻松感兴趣的语气 | 纪录片叙述 |
+| embarrassed | 不确定犹豫的语气 | 尴尬情绪 |
+| empathetic | 关心理解的语气 | 表达同情 |
+| envious | 钦佩渴望的语气 | 羡慕情绪 |
+| excited | 乐观充满希望的语气 | 兴奋期待 |
+| fearful | 恐惧紧张的语气 | 害怕情绪 |
+| friendly | 愉快怡人的语气 | 友好交流 |
+| gentle | 温和礼貌的语气 | 温柔表达 |
+| hopeful | 温暖向往的语气 | 充满希望 |
+| lyrical | 优美感伤的语气 | 诗意表达 |
+| narration-professional | 专业客观的语气 | 专业朗读 |
+| narration-relaxed | 舒缓悦耳的语气 | 轻松朗读 |
+| newscast | 正式专业的语气 | 新闻播报 |
+| newscast-casual | 通用随意的语气 | 一般新闻 |
+| newscast-formal | 正式自信权威的语气 | 正式新闻 |
+| poetry-reading | 带情感节奏的语气 | 朗诵诗歌 |
+| sad | 悲伤语气 | 抒情感伤场景 |
+| serious | 严肃命令的语气 | 严肃表达 |
+| shouting | 努力让别人听到的语气 | 喊叫 |
+| sports_commentary | 轻松感兴趣的语气 | 体育解说 |
+| sports_commentary_excited | 快速充满活力的语气 | 精彩解说 |
+| whispering | 柔和轻声的语气 | 耳语 |
+| terrified | 慌乱颤抖的语气 | 恐惧害怕 |
+| unfriendly | 冷漠无情的语气 | 冷淡 |
+
+更多语音风格和参数设置请参考[微软语音合成标记文档](https://learn.microsoft.com/zh-cn/azure/ai-services/speech-service/speech-synthesis-markup-voice#use-speaking-styles-and-roles)
 
 ## 📝 注意事项
 
